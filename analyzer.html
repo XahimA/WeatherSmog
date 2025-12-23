@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Air Quality & Fog Monitor - India</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #f5f1e8;
+            color: #2c2416;
+            line-height: 1.4;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            border: 3px double #2c2416;
+            background: #fff;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+        
+        .header p {
+            font-size: 12px;
+            color: #666;
+            margin: 5px 0;
+        }
+        
+        .btn {
+            background: #2c2416;
+            color: #f5f1e8;
+            border: 2px solid #2c2416;
+            padding: 10px 25px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            cursor: pointer;
+            margin: 10px 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn:hover {
+            background: #f5f1e8;
+            color: #2c2416;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            border: 2px solid #2c2416;
+            background: #fff;
+            margin: 20px 0;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .stat-box {
+            background: #fff;
+            border: 2px solid #2c2416;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .stat-box h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            color: #666;
+        }
+        
+        .stat-box .num {
+            font-size: 36px;
+            font-weight: bold;
+        }
+        
+        .filters {
+            background: #fff;
+            border: 2px solid #2c2416;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .filter-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .filter-group label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .filter-group select {
+            padding: 5px 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border: 1px solid #2c2416;
+            background: #f5f1e8;
+        }
+        
+        .city-card {
+            background: #fff;
+            border: 2px solid #2c2416;
+            margin-bottom: 15px;
+            padding: 15px;
+        }
+        
+        .city-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .city-title {
+            flex: 1;
+        }
+        
+        .city-name {
+            font-size: 18px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        
+        .city-meta {
+            font-size: 10px;
+            color: #666;
+            margin-top: 3px;
+        }
+        
+        .badges {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .badge {
+            padding: 5px 12px;
+            font-size: 11px;
+            border: 2px solid #2c2416;
+            background: #fff;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .aqi-good { border-color: #2d8659; color: #2d8659; }
+        .aqi-satisfactory { border-color: #7cb342; color: #7cb342; }
+        .aqi-moderate { border-color: #f9a825; color: #f9a825; }
+        .aqi-poor { border-color: #ef6c00; color: #ef6c00; }
+        .aqi-very-poor { border-color: #c62828; color: #c62828; }
+        .aqi-severe { border-color: #8e24aa; color: #8e24aa; }
+        
+        .fog-excellent { border-color: #1565c0; color: #1565c0; }
+        .fog-good { border-color: #2d8659; color: #2d8659; }
+        .fog-moderate { border-color: #f9a825; color: #f9a825; }
+        .fog-poor { border-color: #ef6c00; color: #ef6c00; }
+        .fog-very-poor { border-color: #c62828; color: #c62828; }
+        .fog-severe { border-color: #8e24aa; color: #8e24aa; }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 12px;
+        }
+        
+        .metric {
+            background: #f9f7f3;
+            border: 1px solid #d0c8b8;
+            padding: 10px;
+        }
+        
+        .metric-label {
+            font-size: 10px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        
+        .metric-value {
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .visibility-bar {
+            background: #e0e0e0;
+            height: 8px;
+            margin-top: 8px;
+            border: 1px solid #2c2416;
+            position: relative;
+        }
+        
+        .visibility-fill {
+            background: #2c2416;
+            height: 100%;
+            transition: width 0.3s;
+        }
+        
+        .error {
+            background: #fff;
+            border: 2px solid #c62828;
+            color: #c62828;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .research-note {
+            background: #fff9e6;
+            border: 2px solid #f9a825;
+            padding: 15px;
+            margin: 20px 0;
+            font-size: 11px;
+        }
+        
+        .research-note h4 {
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>━━━ Air Quality & Fog Monitor ━━━</h1>
+            <p>Central Pollution Control Board • India</p>
+            <p>Real-time AQI with Visibility & Fog Level Analysis</p>
+            <button class="btn" id="fetchBtn" onclick="fetchData()">Load Live Data</button>
+            <button class="btn" onclick="exportCSV()">Export CSV</button>
+        </div>
+        
+        <div class="research-note">
+            <h4>📚 Visibility Calculation Method</h4>
+            <p>Formula: V = 166.1 × PM2.5^(-0.56) × (1-RH)^(0.86×RH) | Based on Wang et al. (2022) - Atmospheric Research | Default RH: 50% (actual humidity data not available in API)</p>
+        </div>
+        
+        <div id="loading" class="loading" style="display: none;">
+            <p>█████░░░░░ FETCHING DATA...</p>
+        </div>
+        
+        <div id="stats" class="stats" style="display: none;"></div>
+        
+        <div id="filters" class="filters" style="display: none;">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Filter by AQI:</label>
+                    <select id="aqiFilter" onchange="applyFilters()">
+                        <option value="all">All Levels</option>
+                        <option value="100">AQI > 100</option>
+                        <option value="200">AQI > 200</option>
+                        <option value="300">AQI > 300</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Filter by Visibility:</label>
+                    <select id="visFilter" onchange="applyFilters()">
+                        <option value="all">All Levels</option>
+                        <option value="poor">Poor (< 5 km)</option>
+                        <option value="very-poor">Very Poor (< 2 km)</option>
+                        <option value="severe">Severe (< 1 km)</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Sort by:</label>
+                    <select id="sortBy" onchange="applyFilters()">
+                        <option value="aqi-desc">AQI (High to Low)</option>
+                        <option value="aqi-asc">AQI (Low to High)</option>
+                        <option value="visibility-asc">Visibility (Low to High)</option>
+                        <option value="visibility-desc">Visibility (High to Low)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <div id="content"></div>
+    </div>
+
+    <script>
+        let allCitiesData = [];
+
+        function calculateVisibility(pm25, rh = 50) {
+            if (pm25 <= 0) {
+                return { visibility_km: 35.0, category: 'Excellent', description: 'Clear sky' };
+            }
+            
+            const rhDecimal = Math.max(0.04, Math.min(0.90, rh / 100));
+            
+            let visibilityKm;
+            try {
+                visibilityKm = 166.1 * Math.pow(pm25, -0.56) * Math.pow(1 - rhDecimal, 0.86 * rhDecimal);
+                visibilityKm = Math.min(visibilityKm, 35.0);
+            } catch (e) {
+                visibilityKm = 30 * Math.exp(-0.01 * pm25);
+            }
+            
+            let category, fogClass;
+            if (visibilityKm >= 20) {
+                category = 'Excellent';
+                fogClass = 'fog-excellent';
+            } else if (visibilityKm >= 10) {
+                category = 'Good';
+                fogClass = 'fog-good';
+            } else if (visibilityKm >= 5) {
+                category = 'Moderate';
+                fogClass = 'fog-moderate';
+            } else if (visibilityKm >= 2) {
+                category = 'Poor';
+                fogClass = 'fog-poor';
+            } else if (visibilityKm >= 1) {
+                category = 'Very Poor';
+                fogClass = 'fog-very-poor';
+            } else {
+                category = 'Severe';
+                fogClass = 'fog-severe';
+            }
+            
+            let description;
+            if (visibilityKm >= 20) description = 'Clear sky';
+            else if (visibilityKm >= 10) description = 'Objects clearly visible';
+            else if (visibilityKm >= 5) description = 'Slight haziness';
+            else if (visibilityKm >= 2) description = 'Hazy conditions';
+            else if (visibilityKm >= 1) description = 'Dense haze';
+            else description = 'Heavy haze/fog';
+            
+            return {
+                visibility_km: Math.round(visibilityKm * 100) / 100,
+                category,
+                fogClass,
+                description
+            };
+        }
+
+        function getAQIClass(value) {
+            const v = parseInt(value);
+            if (v <= 50) return 'aqi-good';
+            if (v <= 100) return 'aqi-satisfactory';
+            if (v <= 200) return 'aqi-moderate';
+            if (v <= 300) return 'aqi-poor';
+            if (v <= 400) return 'aqi-very-poor';
+            return 'aqi-severe';
+        }
+        
+        function getAQILabel(value) {
+            const v = parseInt(value);
+            if (v <= 50) return 'Good';
+            if (v <= 100) return 'Satisfactory';
+            if (v <= 200) return 'Moderate';
+            if (v <= 300) return 'Poor';
+            if (v <= 400) return 'Very Poor';
+            return 'Severe';
+        }
+
+        async function fetchData() {
+            const btn = document.getElementById('fetchBtn');
+            const loading = document.getElementById('loading');
+            const stats = document.getElementById('stats');
+            const filters = document.getElementById('filters');
+            const content = document.getElementById('content');
+            
+            btn.disabled = true;
+            loading.style.display = 'block';
+            stats.style.display = 'none';
+            filters.style.display = 'none';
+            content.innerHTML = '';
+            
+            try {
+                const response = await fetch('https://airquality.cpcb.gov.in/caaqms/rss_feed');
+                const text = await response.text();
+                
+                const parser = new DOMParser();
+                const xmlData = parser.parseFromString(text, 'text/xml');
+                
+                processData(xmlData);
+            } catch (error) {
+                content.innerHTML = `<div class="error">ERROR: ${error.message}</div>`;
+            } finally {
+                btn.disabled = false;
+                loading.style.display = 'none';
+            }
+        }
+
+        function processData(xmlData) {
+            allCitiesData = [];
+            const states = xmlData.querySelectorAll('State');
+            
+            states.forEach(state => {
+                const stateName = state.getAttribute('id').replace(/_/g, ' ');
+                const cities = state.querySelectorAll('City');
+                
+                cities.forEach(city => {
+                    const cityName = city.getAttribute('id');
+                    const stations = city.querySelectorAll('Station');
+                    
+                    stations.forEach(station => {
+                        const stationName = station.getAttribute('id');
+                        const aqiElement = station.querySelector('Air_Quality_Index');
+                        
+                        if (aqiElement) {
+                            const aqiValue = parseInt(aqiElement.getAttribute('Value'));
+                            const predominantParam = aqiElement.getAttribute('Predominant_Parameter');
+                            
+                            // Get PM2.5 value
+                            let pm25 = 0;
+                            const pm25Element = station.querySelector('Pollutant_Index[id="PM2.5"]');
+                            if (pm25Element) {
+                                pm25 = parseFloat(pm25Element.getAttribute('Avg')) || 0;
+                            }
+                            
+                            // If PM2.5 not available, approximate from AQI
+                            if (pm25 === 0) {
+                                pm25 = aqiValue * 0.7;
+                            }
+                            
+                            const visibility = calculateVisibility(pm25);
+                            
+                            allCitiesData.push({
+                                state: stateName,
+                                city: cityName,
+                                station: stationName,
+                                aqi: aqiValue,
+                                pm25: Math.round(pm25 * 100) / 100,
+                                predominantParam,
+                                visibility,
+                                lastUpdate: station.getAttribute('lastupdate'),
+                                latitude: station.getAttribute('latitude'),
+                                longitude: station.getAttribute('longitude')
+                            });
+                        }
+                    });
+                });
+            });
+            
+            displayStats();
+            applyFilters();
+        }
+
+        function displayStats() {
+            const stats = document.getElementById('stats');
+            const filters = document.getElementById('filters');
+            
+            const totalStations = allCitiesData.length;
+            const highAQI = allCitiesData.filter(d => d.aqi > 100).length;
+            const poorVis = allCitiesData.filter(d => d.visibility.visibility_km < 5).length;
+            const avgAQI = Math.round(allCitiesData.reduce((sum, d) => sum + d.aqi, 0) / totalStations);
+            const avgVis = Math.round((allCitiesData.reduce((sum, d) => sum + d.visibility.visibility_km, 0) / totalStations) * 10) / 10;
+            
+            stats.innerHTML = `
+                <div class="stat-box">
+                    <h3>Total Stations</h3>
+                    <div class="num">${totalStations}</div>
+                </div>
+                <div class="stat-box">
+                    <h3>AQI > 100</h3>
+                    <div class="num">${highAQI}</div>
+                </div>
+                <div class="stat-box">
+                    <h3>Poor Visibility</h3>
+                    <div class="num">${poorVis}</div>
+                </div>
+                <div class="stat-box">
+                    <h3>Avg AQI</h3>
+                    <div class="num">${avgAQI}</div>
+                </div>
+                <div class="stat-box">
+                    <h3>Avg Visibility</h3>
+                    <div class="num">${avgVis} km</div>
+                </div>
+            `;
+            stats.style.display = 'grid';
+            filters.style.display = 'block';
+        }
+
+        function applyFilters() {
+            const aqiFilter = document.getElementById('aqiFilter').value;
+            const visFilter = document.getElementById('visFilter').value;
+            const sortBy = document.getElementById('sortBy').value;
+            
+            let filtered = [...allCitiesData];
+            
+            // Apply AQI filter
+            if (aqiFilter !== 'all') {
+                const threshold = parseInt(aqiFilter);
+                filtered = filtered.filter(d => d.aqi > threshold);
+            }
+            
+            // Apply visibility filter
+            if (visFilter === 'poor') {
+                filtered = filtered.filter(d => d.visibility.visibility_km < 5);
+            } else if (visFilter === 'very-poor') {
+                filtered = filtered.filter(d => d.visibility.visibility_km < 2);
+            } else if (visFilter === 'severe') {
+                filtered = filtered.filter(d => d.visibility.visibility_km < 1);
+            }
+            
+            // Apply sorting
+            if (sortBy === 'aqi-desc') {
+                filtered.sort((a, b) => b.aqi - a.aqi);
+            } else if (sortBy === 'aqi-asc') {
+                filtered.sort((a, b) => a.aqi - b.aqi);
+            } else if (sortBy === 'visibility-asc') {
+                filtered.sort((a, b) => a.visibility.visibility_km - b.visibility.visibility_km);
+            } else if (sortBy === 'visibility-desc') {
+                filtered.sort((a, b) => b.visibility.visibility_km - a.visibility.visibility_km);
+            }
+            
+            displayCities(filtered);
+        }
+
+        function displayCities(cities) {
+            const content = document.getElementById('content');
+            
+            if (cities.length === 0) {
+                content.innerHTML = '<div class="error">No stations match the selected filters</div>';
+                return;
+            }
+            
+            let html = '';
+            cities.forEach(city => {
+                const aqiClass = getAQIClass(city.aqi);
+                const aqiLabel = getAQILabel(city.aqi);
+                const vis = city.visibility;
+                const visPercent = Math.min(100, (vis.visibility_km / 35) * 100);
+                
+                html += `
+                    <div class="city-card">
+                        <div class="city-header">
+                            <div class="city-title">
+                                <div class="city-name">${city.city}</div>
+                                <div class="city-meta">${city.station} • ${city.state}</div>
+                            </div>
+                            <div class="badges">
+                                <span class="badge ${aqiClass}">AQI: ${city.aqi}</span>
+                                <span class="badge">${aqiLabel}</span>
+                                <span class="badge ${vis.fogClass}">VIS: ${vis.visibility_km} km</span>
+                                <span class="badge ${vis.fogClass}">${vis.category}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="metrics">
+                            <div class="metric">
+                                <div class="metric-label">PM2.5 Level</div>
+                                <div class="metric-value">${city.pm25} μg/m³</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Visibility</div>
+                                <div class="metric-value">${vis.visibility_km} km</div>
+                                <div class="visibility-bar">
+                                    <div class="visibility-fill" style="width: ${visPercent}%"></div>
+                                </div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Fog/Haze Level</div>
+                                <div class="metric-value">${vis.description}</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Predominant</div>
+                                <div class="metric-value">${city.predominantParam}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="city-meta" style="margin-top: 10px;">
+                            Last Update: ${city.lastUpdate} • Coords: ${city.latitude}, ${city.longitude}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            content.innerHTML = html;
+        }
+
+        function exportCSV() {
+            if (allCitiesData.length === 0) {
+                alert('Please load data first!');
+                return;
+            }
+            
+            const headers = ['State', 'City', 'Station', 'AQI', 'AQI_Category', 'PM2.5_μg/m³', 
+                           'Visibility_km', 'Visibility_Category', 'Fog_Description', 
+                           'Predominant_Parameter', 'Latitude', 'Longitude', 'Last_Update'];
+            
+            const rows = allCitiesData.map(d => [
+                d.state,
+                d.city,
+                d.station,
+                d.aqi,
+                getAQILabel(d.aqi),
+                d.pm25,
+                d.visibility.visibility_km,
+                d.visibility.category,
+                d.visibility.description,
+                d.predominantParam,
+                d.latitude,
+                d.longitude,
+                d.lastUpdate
+            ]);
+            
+            let csv = headers.join(',') + '\n';
+            rows.forEach(row => {
+                csv += row.map(cell => `"${cell}"`).join(',') + '\n';
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `aqi_fog_analysis_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
