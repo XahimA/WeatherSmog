@@ -274,8 +274,9 @@
         </div>
         
         <div class="research-note">
-            <h4>📚 Visibility Calculation Method</h4>
-            <p>Formula: V = 166.1 × PM2.5^(-0.56) × (1-RH)^(0.86×RH) | Based on Wang et al. (2022) - Atmospheric Research | Default RH: 50% (actual humidity data not available in API)</p>
+            <h4>📊 Visibility Classification Method</h4>
+            <p>Visibility ranges are based on AQI levels for dry air conditions (RH < 70%) according to standard air quality guidelines</p>
+            <p style="margin-top: 8px;"><strong>Note:</strong> Actual visibility may vary with relative humidity (RH). Visibility drops non-linearly once RH crosses 80%</p>
         </div>
         
         <div id="loading" class="loading" style="display: none;">
@@ -322,54 +323,67 @@
     <script>
         let allCitiesData = [];
 
-        function calculateVisibility(pm25, rh = 50) {
-            if (pm25 <= 0) {
-                return { visibility_km: 35.0, category: 'Excellent', description: 'Clear sky' };
-            }
+        function getVisibilityFromAQI(aqi) {
+            // Visibility based on AQI table (for dry air, RH < 70%)
+            let visibility_range, visibility_display, pm25_category, severity, fog_class, description;
             
-            const rhDecimal = Math.max(0.04, Math.min(0.90, rh / 100));
-            
-            let visibilityKm;
-            try {
-                visibilityKm = 166.1 * Math.pow(pm25, -0.56) * Math.pow(1 - rhDecimal, 0.86 * rhDecimal);
-                visibilityKm = Math.min(visibilityKm, 35.0);
-            } catch (e) {
-                visibilityKm = 30 * Math.exp(-0.01 * pm25);
-            }
-            
-            let category, fogClass;
-            if (visibilityKm >= 20) {
-                category = 'Excellent';
-                fogClass = 'fog-excellent';
-            } else if (visibilityKm >= 10) {
-                category = 'Good';
-                fogClass = 'fog-good';
-            } else if (visibilityKm >= 5) {
-                category = 'Moderate';
-                fogClass = 'fog-moderate';
-            } else if (visibilityKm >= 2) {
-                category = 'Poor';
-                fogClass = 'fog-poor';
-            } else if (visibilityKm >= 1) {
-                category = 'Very Poor';
-                fogClass = 'fog-very-poor';
+            if (aqi <= 50) {
+                visibility_range = '>10 km';
+                visibility_display = 15; // midpoint for display
+                pm25_category = 'Good';
+                severity = 'Good';
+                fog_class = 'fog-excellent';
+                description = 'Clear visibility, no haze';
+            } else if (aqi <= 100) {
+                visibility_range = '5-10 km';
+                visibility_display = 7.5;
+                pm25_category = 'Moderate';
+                severity = 'Moderate';
+                fog_class = 'fog-good';
+                description = 'Slight haze, objects visible';
+            } else if (aqi <= 200) {
+                visibility_range = '2-5 km';
+                visibility_display = 3.5;
+                pm25_category = 'Poor';
+                severity = 'Poor';
+                fog_class = 'fog-moderate';
+                description = 'Moderate haze, reduced visibility';
+            } else if (aqi <= 300) {
+                visibility_range = '1-2 km';
+                visibility_display = 1.5;
+                pm25_category = 'Very Poor';
+                severity = 'Very Poor';
+                fog_class = 'fog-poor';
+                description = 'Heavy haze, poor visibility';
+            } else if (aqi <= 400) {
+                visibility_range = '500-1000 m';
+                visibility_display = 0.75;
+                pm25_category = 'Severe';
+                severity = 'Severe';
+                fog_class = 'fog-very-poor';
+                description = 'Dense haze, very low visibility';
+            } else if (aqi <= 500) {
+                visibility_range = '200-500 m';
+                visibility_display = 0.35;
+                pm25_category = 'Hazardous';
+                severity = 'Hazardous';
+                fog_class = 'fog-severe';
+                description = 'Extremely dense haze/fog';
             } else {
-                category = 'Severe';
-                fogClass = 'fog-severe';
+                visibility_range = '<200 m';
+                visibility_display = 0.15;
+                pm25_category = 'Hazardous';
+                severity = 'Hazardous';
+                fog_class = 'fog-severe';
+                description = 'Severe fog/haze conditions';
             }
-            
-            let description;
-            if (visibilityKm >= 20) description = 'Clear sky';
-            else if (visibilityKm >= 10) description = 'Objects clearly visible';
-            else if (visibilityKm >= 5) description = 'Slight haziness';
-            else if (visibilityKm >= 2) description = 'Hazy conditions';
-            else if (visibilityKm >= 1) description = 'Dense haze';
-            else description = 'Heavy haze/fog';
             
             return {
-                visibility_km: Math.round(visibilityKm * 100) / 100,
-                category,
-                fogClass,
+                visibility_range,
+                visibility_km: visibility_display,
+                category: pm25_category,
+                severity,
+                fogClass: fog_class,
                 description
             };
         }
@@ -455,7 +469,7 @@
                                 pm25 = aqiValue * 0.7;
                             }
                             
-                            const visibility = calculateVisibility(pm25);
+                            const visibility = getVisibilityFromAQI(aqiValue);
                             
                             allCitiesData.push({
                                 state: stateName,
@@ -563,7 +577,7 @@
                 const aqiClass = getAQIClass(city.aqi);
                 const aqiLabel = getAQILabel(city.aqi);
                 const vis = city.visibility;
-                const visPercent = Math.min(100, (vis.visibility_km / 35) * 100);
+                const visPercent = Math.min(100, (vis.visibility_km / 15) * 100);
                 
                 html += `
                     <div class="city-card">
@@ -575,8 +589,8 @@
                             <div class="badges">
                                 <span class="badge ${aqiClass}">AQI: ${city.aqi}</span>
                                 <span class="badge">${aqiLabel}</span>
-                                <span class="badge ${vis.fogClass}">VIS: ${vis.visibility_km} km</span>
-                                <span class="badge ${vis.fogClass}">${vis.category}</span>
+                                <span class="badge ${vis.fogClass}">VIS: ${vis.visibility_range}</span>
+                                <span class="badge ${vis.fogClass}">${vis.severity}</span>
                             </div>
                         </div>
                         
@@ -586,18 +600,26 @@
                                 <div class="metric-value">${city.pm25} μg/m³</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Visibility</div>
-                                <div class="metric-value">${vis.visibility_km} km</div>
+                                <div class="metric-label">Visibility Range</div>
+                                <div class="metric-value">${vis.visibility_range}</div>
                                 <div class="visibility-bar">
                                     <div class="visibility-fill" style="width: ${visPercent}%"></div>
                                 </div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Fog/Haze Level</div>
+                                <div class="metric-label">PM2.5 Category</div>
+                                <div class="metric-value">${vis.category}</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Severity Level</div>
+                                <div class="metric-value ${vis.fogClass}">${vis.severity}</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Conditions</div>
                                 <div class="metric-value">${vis.description}</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Predominant</div>
+                                <div class="metric-label">Predominant Pollutant</div>
                                 <div class="metric-value">${city.predominantParam}</div>
                             </div>
                         </div>
@@ -619,7 +641,7 @@
             }
             
             const headers = ['State', 'City', 'Station', 'AQI', 'AQI_Category', 'PM2.5_μg/m³', 
-                           'Visibility_km', 'Visibility_Category', 'Fog_Description', 
+                           'Visibility_Range', 'PM2.5_Category', 'Severity_Level', 'Conditions', 
                            'Predominant_Parameter', 'Latitude', 'Longitude', 'Last_Update'];
             
             const rows = allCitiesData.map(d => [
@@ -629,8 +651,9 @@
                 d.aqi,
                 getAQILabel(d.aqi),
                 d.pm25,
-                d.visibility.visibility_km,
+                d.visibility.visibility_range,
                 d.visibility.category,
+                d.visibility.severity,
                 d.visibility.description,
                 d.predominantParam,
                 d.latitude,
