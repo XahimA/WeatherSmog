@@ -434,7 +434,7 @@
             }
         }
 
-        async function loadPincodeData() {
+      async function loadPincodeData() {
             const url = 'https://xahima.github.io/WeatherSmog/locations.csv';
             
             try {
@@ -446,6 +446,7 @@
                 
                 pincodeData = {};
                 let validCount = 0;
+                let invalidCount = 0;
                 
                 for (let i = 1; i < lines.length; i++) {
                     const line = lines[i].trim();
@@ -458,20 +459,26 @@
                         const lat = parseFloat(parts[1]);
                         const lon = parseFloat(parts[2]);
                         
+                        // Strict validation: valid 6-digit pincode with proper Indian coordinates
                         if (pincode && pincode.length === 6 && /^\d+$/.test(pincode) &&
-                            !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
+                            !isNaN(lat) && !isNaN(lon) && 
+                            lat !== 0 && lon !== 0 &&
+                            lat >= 8 && lat <= 37 &&  // India latitude range
+                            lon >= 68 && lon <= 97) { // India longitude range
                             
                             if (!pincodeData[pincode]) {
                                 pincodeData[pincode] = { lat, lon };
                                 validCount++;
                             }
+                        } else {
+                            invalidCount++;
                         }
                     }
                 }
                 
                 spatialGrid = createSpatialGrid(pincodeData);
                 
-                console.log(`Loaded ${validCount} pincodes, created ${Object.keys(spatialGrid).length} grid cells`);
+                console.log(`Loaded ${validCount} valid pincodes (skipped ${invalidCount} invalid/incomplete), created ${Object.keys(spatialGrid).length} grid cells`);
                 return true;
                 
             } catch (error) {
