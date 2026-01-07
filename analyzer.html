@@ -129,7 +129,7 @@
             letter-spacing: 1px;
         }
         
-        .filter-group select {
+        .filter-group select, .filter-group input {
             padding: 5px 10px;
             font-family: 'Courier New', monospace;
             font-size: 12px;
@@ -248,6 +248,15 @@
             text-align: center;
         }
         
+        .success {
+            background: #e8f5e9;
+            border: 2px solid #2d8659;
+            color: #2d8659;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
         .research-note {
             background: #fff9e6;
             border: 2px solid #f9a825;
@@ -265,6 +274,48 @@
         .research-note p {
             margin: 5px 0;
         }
+        
+        .config-section {
+            background: #fff;
+            border: 2px solid #2c2416;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .config-section h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .input-group {
+            margin: 10px 0;
+        }
+        
+        .input-group label {
+            display: block;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+        
+        .input-group input {
+            width: 100%;
+            padding: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border: 1px solid #2c2416;
+            background: #f5f1e8;
+        }
+        
+        .pincode-count {
+            font-size: 11px;
+            color: #2d8659;
+            font-weight: bold;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -272,23 +323,37 @@
         <div class="header">
             <h1>━━━ Air Quality & Fog Monitor ━━━</h1>
             <p>Central Pollution Control Board • India</p>
-            <p>Real-time AQI with Visibility & Fog Level Analysis (Azure Logic)</p>
-            <button class="btn" id="fetchBtn" onclick="fetchData()">Load Live Data</button>
-            <button class="btn" onclick="exportCSV()">Export CSV</button>
+            <p>Real-time AQI with Visibility & Fog Level Analysis + 10km Pincode Mapping</p>
+        </div>
+        
+        <div class="config-section">
+            <h3>🔧 Configuration - Load Pincode Data from GitHub</h3>
+            <div class="input-group">
+                <label>GitHub Raw CSV URL (locations.csv with Pincode, Latitude, Longitude):</label>
+                <input type="text" id="githubUrl" placeholder="https://raw.githubusercontent.com/username/repo/main/locations.csv" 
+                       value="https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/locations.csv">
+            </div>
+            <button class="btn" onclick="loadPincodeData()">Load Pincode Data</button>
+            <div id="pincodeStatus"></div>
         </div>
         
         <div class="research-note">
-            <h4>📊 Visibility Classification Method</h4>
-            <p><strong>Simplified 4-Level System (Matching Azure Backend):</strong></p>
+            <h4>📊 How It Works</h4>
+            <p><strong>Visibility Classification (4-Level System - Matching Azure):</strong></p>
             <p>• AQI ≤ 100: Clear (> 2 km visibility)</p>
             <p>• AQI 101-200: Moderate Fog (1-2 km visibility)</p>
             <p>• AQI 201-300: Dense Fog (500m-1km visibility)</p>
             <p>• AQI > 300: Very Severe Fog (200-500m visibility)</p>
-            <p style="margin-top: 8px;"><strong>Note:</strong> CSV export format matches Azure daily email report structure</p>
+            <p style="margin-top: 8px;"><strong>Pincode Mapping:</strong> Uses Haversine distance formula to find all pincodes within 10km radius of each monitoring station. CSV export creates one row per pincode (same as Azure daily email).</p>
+        </div>
+        
+        <div style="text-align: center; margin: 20px 0;">
+            <button class="btn" id="fetchBtn" onclick="fetchData()">Load AQI Data & Map Pincodes</button>
+            <button class="btn" onclick="exportCSV()">Export CSV</button>
         </div>
         
         <div id="loading" class="loading" style="display: none;">
-            <p>█████░░░░░ FETCHING DATA...</p>
+            <p>█████░░░░░ PROCESSING...</p>
         </div>
         
         <div id="stats" class="stats" style="display: none;"></div>
@@ -330,9 +395,152 @@
 
     <script>
         let allCitiesData = [];
+        let pincodeData = {};
+        let spatialGrid = {};
+        const GRID_SIZE = 0.05; // ~5km grid cells
+        const RADIUS_KM = 10; // 10km radius for pincode mapping
+
+        // Haversine distance calculation
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth's radius in km
+            const toRad = (deg) => deg * (Math.PI / 180);
+            
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lon2 - lon1);
+            
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Create spatial grid for faster lookups
+        function createSpatialGrid(pincodes) {
+            const grid = {};
+            for (const [pincode, coords] of Object.entries(pincodes)) {
+                const gridX = Math.floor(coords.lat / GRID_SIZE);
+                const gridY = Math.floor(coords.lon / GRID_SIZE);
+                const key = `${gridX},${gridY}`;
+                
+                if (!grid[key]) grid[key] = [];
+                grid[key].push({ pincode, ...coords });
+            }
+            return grid;
+        }
+
+        // Get nearby grid cells
+        function getNearbyGridCells(lat, lon, radiusKm) {
+            const latOffset = Math.ceil((radiusKm / 111.0) / GRID_SIZE);
+            const lonOffset = Math.ceil((radiusKm / (111.0 * Math.cos(lat * Math.PI / 180))) / GRID_SIZE);
+            
+            const gridX = Math.floor(lat / GRID_SIZE);
+            const gridY = Math.floor(lon / GRID_SIZE);
+            
+            const cells = [];
+            for (let dx = -latOffset; dx <= latOffset; dx++) {
+                for (let dy = -lonOffset; dy <= lonOffset; dy++) {
+                    cells.push(`${gridX + dx},${gridY + dy}`);
+                }
+            }
+            return cells;
+        }
+
+        // Find nearby pincodes within 10km
+        function findNearbyPincodes(stationLat, stationLon) {
+            if (!stationLat || !stationLon || stationLat === 'N/A' || stationLon === 'N/A') {
+                return [];
+            }
+            
+            try {
+                const lat = parseFloat(stationLat);
+                const lon = parseFloat(stationLon);
+                
+                if (isNaN(lat) || isNaN(lon)) return [];
+                
+                const nearbyPincodes = [];
+                const candidateCells = getNearbyGridCells(lat, lon, RADIUS_KM);
+                const checked = new Set();
+                
+                for (const cell of candidateCells) {
+                    if (spatialGrid[cell]) {
+                        for (const item of spatialGrid[cell]) {
+                            if (!checked.has(item.pincode)) {
+                                checked.add(item.pincode);
+                                const distance = haversineDistance(lat, lon, item.lat, item.lon);
+                                if (distance <= RADIUS_KM) {
+                                    nearbyPincodes.push(item.pincode);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return nearbyPincodes.sort();
+            } catch (error) {
+                console.error('Error calculating distance:', error);
+                return [];
+            }
+        }
+
+        // Load pincode data from GitHub
+        async function loadPincodeData() {
+            const url = document.getElementById('githubUrl').value.trim();
+            const statusDiv = document.getElementById('pincodeStatus');
+            
+            if (!url) {
+                statusDiv.innerHTML = '<div class="error">Please enter a GitHub URL</div>';
+                return;
+            }
+            
+            statusDiv.innerHTML = '<p>Loading pincode data...</p>';
+            
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Failed to fetch file');
+                
+                const csvText = await response.text();
+                const lines = csvText.split('\n');
+                
+                pincodeData = {};
+                let validCount = 0;
+                
+                // Skip header row
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    
+                    const parts = line.split(',').map(p => p.replace(/"/g, '').trim());
+                    
+                    if (parts.length >= 3) {
+                        const pincode = parts[0];
+                        const lat = parseFloat(parts[1]);
+                        const lon = parseFloat(parts[2]);
+                        
+                        // Validate
+                        if (pincode && pincode.length === 6 && /^\d+$/.test(pincode) &&
+                            !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
+                            
+                            if (!pincodeData[pincode]) {
+                                pincodeData[pincode] = { lat, lon };
+                                validCount++;
+                            }
+                        }
+                    }
+                }
+                
+                // Create spatial grid
+                spatialGrid = createSpatialGrid(pincodeData);
+                
+                statusDiv.innerHTML = `<div class="success">✓ Loaded ${validCount} valid pincodes from GitHub<br><span class="pincode-count">Spatial grid created with ${Object.keys(spatialGrid).length} cells</span></div>`;
+                
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error">Error loading pincode data: ${error.message}<br>Make sure the URL points to raw CSV file with format: Pincode,Latitude,Longitude</div>`;
+            }
+        }
 
         function getVisibilityFromAQI(aqi) {
-            // Simplified visibility based on Azure logic (matching email report)
             let visibility_range, visibility_km, fog_alert_type, fog_class;
             
             if (aqi <= 100) {
@@ -391,8 +599,14 @@
             const filters = document.getElementById('filters');
             const content = document.getElementById('content');
             
+            if (Object.keys(pincodeData).length === 0) {
+                alert('Please load pincode data first!');
+                return;
+            }
+            
             btn.disabled = true;
             loading.style.display = 'block';
+            loading.innerHTML = '<p>█████░░░░░ FETCHING AQI DATA...</p>';
             stats.style.display = 'none';
             filters.style.display = 'none';
             content.innerHTML = '';
@@ -404,7 +618,9 @@
                 const parser = new DOMParser();
                 const xmlData = parser.parseFromString(text, 'text/xml');
                 
-                processData(xmlData);
+                loading.innerHTML = '<p>█████████░ MAPPING PINCODES (10km radius)...</p>';
+                await processData(xmlData);
+                
             } catch (error) {
                 content.innerHTML = `<div class="error">ERROR: ${error.message}</div>`;
             } finally {
@@ -413,10 +629,12 @@
             }
         }
 
-        function processData(xmlData) {
+        async function processData(xmlData) {
             allCitiesData = [];
             const states = xmlData.querySelectorAll('State');
+            const stationsInfo = [];
             
+            // First pass: collect all stations
             states.forEach(state => {
                 const stateName = state.getAttribute('id').replace(/_/g, ' ');
                 const cities = state.querySelectorAll('City');
@@ -432,10 +650,9 @@
                         if (aqiElement) {
                             const aqiValue = parseInt(aqiElement.getAttribute('Value'));
                             const predominantParam = aqiElement.getAttribute('Predominant_Parameter');
-                            
                             const visibility = getVisibilityFromAQI(aqiValue);
                             
-                            allCitiesData.push({
+                            stationsInfo.push({
                                 state: stateName,
                                 city: cityName,
                                 station: stationName,
@@ -451,24 +668,70 @@
                 });
             });
             
-            displayStats();
+            // Second pass: map pincodes (10km radius)
+            for (const stationInfo of stationsInfo) {
+                const nearbyPincodes = findNearbyPincodes(
+                    stationInfo.latitude,
+                    stationInfo.longitude
+                );
+                
+                if (nearbyPincodes.length > 0) {
+                    // Create one row per pincode (Azure logic)
+                    for (const pincode of nearbyPincodes) {
+                        allCitiesData.push({
+                            ...stationInfo,
+                            pincode: pincode
+                        });
+                    }
+                } else {
+                    // No pincodes within 10km
+                    allCitiesData.push({
+                        ...stationInfo,
+                        pincode: 'N/A'
+                    });
+                }
+            }
+            
+            console.log(`Generated ${allCitiesData.length} rows with pincode mappings from ${stationsInfo.length} stations`);
+            
+            displayStats(stationsInfo.length);
             applyFilters();
         }
 
-        function displayStats() {
+        function displayStats(totalStations) {
             const stats = document.getElementById('stats');
             const filters = document.getElementById('filters');
             
-            const totalStations = allCitiesData.length;
-            const highAQI = allCitiesData.filter(d => d.aqi > 300).length;
-            const poorVis = allCitiesData.filter(d => d.visibility.visibility_km < 1).length;
-            const avgAQI = Math.round(allCitiesData.reduce((sum, d) => sum + d.aqi, 0) / totalStations);
-            const avgVis = Math.round((allCitiesData.reduce((sum, d) => sum + d.visibility.visibility_km, 0) / totalStations) * 10) / 10;
+            // Get unique stations for proper counting
+            const uniqueStations = new Map();
+            allCitiesData.forEach(d => {
+                const key = `${d.city}-${d.station}`;
+                if (!uniqueStations.has(key)) {
+                    uniqueStations.set(key, d);
+                }
+            });
+            
+            const stationsArray = Array.from(uniqueStations.values());
+            const highAQI = stationsArray.filter(d => d.aqi > 300).length;
+            const poorVis = stationsArray.filter(d => d.visibility.visibility_km < 1).length;
+            const avgAQI = Math.round(stationsArray.reduce((sum, d) => sum + d.aqi, 0) / stationsArray.length);
+            const avgVis = Math.round((stationsArray.reduce((sum, d) => sum + d.visibility.visibility_km, 0) / stationsArray.length) * 10) / 10;
+            
+            const totalRows = allCitiesData.length;
+            const mappedPincodes = allCitiesData.filter(d => d.pincode !== 'N/A').length;
             
             stats.innerHTML = `
                 <div class="stat-box">
                     <h3>Total Stations</h3>
                     <div class="num">${totalStations}</div>
+                </div>
+                <div class="stat-box">
+                    <h3>Total CSV Rows</h3>
+                    <div class="num">${totalRows}</div>
+                </div>
+                <div class="stat-box">
+                    <h3>Mapped Pincodes</h3>
+                    <div class="num">${mappedPincodes}</div>
                 </div>
                 <div class="stat-box">
                     <h3>AQI > 300</h3>
@@ -482,10 +745,6 @@
                     <h3>Avg AQI</h3>
                     <div class="num">${avgAQI}</div>
                 </div>
-                <div class="stat-box">
-                    <h3>Avg Visibility</h3>
-                    <div class="num">${avgVis} km</div>
-                </div>
             `;
             stats.style.display = 'grid';
             filters.style.display = 'block';
@@ -496,7 +755,23 @@
             const visFilter = document.getElementById('visFilter').value;
             const sortBy = document.getElementById('sortBy').value;
             
-            let filtered = [...allCitiesData];
+            // Get unique stations for display (show each station once with pincode count)
+            const stationMap = new Map();
+            
+            allCitiesData.forEach(d => {
+                const key = `${d.city}-${d.station}`;
+                if (!stationMap.has(key)) {
+                    stationMap.set(key, {
+                        ...d,
+                        pincodes: []
+                    });
+                }
+                if (d.pincode !== 'N/A') {
+                    stationMap.get(key).pincodes.push(d.pincode);
+                }
+            });
+            
+            let filtered = Array.from(stationMap.values());
             
             // Apply AQI filter
             if (aqiFilter !== 'all') {
@@ -602,6 +877,7 @@
                 alert('Please load data first!');
                 return;
             }
+            
             
             // Sort by AQI descending (matching Azure logic)
             const data_sorted = [...allCitiesData].sort((a, b) => b.aqi - a.aqi);
