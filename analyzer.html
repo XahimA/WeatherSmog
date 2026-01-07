@@ -261,6 +261,10 @@
             text-transform: uppercase;
             letter-spacing: 1px;
         }
+        
+        .research-note p {
+            margin: 5px 0;
+        }
     </style>
 </head>
 <body>
@@ -268,15 +272,19 @@
         <div class="header">
             <h1>━━━ Air Quality & Fog Monitor ━━━</h1>
             <p>Central Pollution Control Board • India</p>
-            <p>Real-time AQI with Visibility & Fog Level Analysis</p>
+            <p>Real-time AQI with Visibility & Fog Level Analysis (Azure Logic)</p>
             <button class="btn" id="fetchBtn" onclick="fetchData()">Load Live Data</button>
             <button class="btn" onclick="exportCSV()">Export CSV</button>
         </div>
         
         <div class="research-note">
             <h4>📊 Visibility Classification Method</h4>
-            <p>Visibility ranges are based on AQI levels for dry air conditions (RH < 70%) according to standard air quality guidelines</p>
-            <p style="margin-top: 8px;"><strong>Note:</strong> Actual visibility may vary with relative humidity (RH). Visibility drops non-linearly once RH crosses 80%</p>
+            <p><strong>Simplified 4-Level System (Matching Azure Backend):</strong></p>
+            <p>• AQI ≤ 100: Clear (> 2 km visibility)</p>
+            <p>• AQI 101-200: Moderate Fog (1-2 km visibility)</p>
+            <p>• AQI 201-300: Dense Fog (500m-1km visibility)</p>
+            <p>• AQI > 300: Very Severe Fog (200-500m visibility)</p>
+            <p style="margin-top: 8px;"><strong>Note:</strong> CSV export format matches Azure daily email report structure</p>
         </div>
         
         <div id="loading" class="loading" style="display: none;">
@@ -300,9 +308,9 @@
                     <label>Filter by Visibility:</label>
                     <select id="visFilter" onchange="applyFilters()">
                         <option value="all">All Levels</option>
-                        <option value="poor">Poor (< 5 km)</option>
-                        <option value="very-poor">Very Poor (< 2 km)</option>
-                        <option value="severe">Severe (< 1 km)</option>
+                        <option value="poor">Visibility < 2 km</option>
+                        <option value="very-poor">Visibility < 1 km</option>
+                        <option value="severe">Visibility < 0.5 km</option>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -324,67 +332,36 @@
         let allCitiesData = [];
 
         function getVisibilityFromAQI(aqi) {
-            // Visibility based on AQI table (for dry air, RH < 70%)
-            let visibility_range, visibility_display, pm25_category, severity, fog_class, description;
+            // Simplified visibility based on Azure logic (matching email report)
+            let visibility_range, visibility_km, fog_alert_type, fog_class;
             
-            if (aqi <= 50) {
-                visibility_range = '>10 km';
-                visibility_display = 15; // midpoint for display
-                pm25_category = 'Good';
-                severity = 'Good';
+            if (aqi <= 100) {
+                visibility_range = '> 2 km';
+                visibility_km = 3;
+                fog_alert_type = 'Clear';
                 fog_class = 'fog-excellent';
-                description = 'Clear visibility, no haze';
-            } else if (aqi <= 100) {
-                visibility_range = '5-10 km';
-                visibility_display = 7.5;
-                pm25_category = 'Moderate';
-                severity = 'Moderate';
-                fog_class = 'fog-good';
-                description = 'Slight haze, objects visible';
             } else if (aqi <= 200) {
-                visibility_range = '2-5 km';
-                visibility_display = 3.5;
-                pm25_category = 'Poor';
-                severity = 'Poor';
-                fog_class = 'fog-moderate';
-                description = 'Moderate haze, reduced visibility';
-            } else if (aqi <= 300) {
                 visibility_range = '1-2 km';
-                visibility_display = 1.5;
-                pm25_category = 'Very Poor';
-                severity = 'Very Poor';
+                visibility_km = 1.5;
+                fog_alert_type = 'Moderate Fog';
+                fog_class = 'fog-moderate';
+            } else if (aqi <= 300) {
+                visibility_range = '500m-1km';
+                visibility_km = 0.75;
+                fog_alert_type = 'Dense Fog';
                 fog_class = 'fog-poor';
-                description = 'Heavy haze, poor visibility';
-            } else if (aqi <= 400) {
-                visibility_range = '500-1000 m';
-                visibility_display = 0.75;
-                pm25_category = 'Severe';
-                severity = 'Severe';
-                fog_class = 'fog-very-poor';
-                description = 'Dense haze, very low visibility';
-            } else if (aqi <= 500) {
-                visibility_range = '200-500 m';
-                visibility_display = 0.35;
-                pm25_category = 'Hazardous';
-                severity = 'Hazardous';
-                fog_class = 'fog-severe';
-                description = 'Extremely dense haze/fog';
             } else {
-                visibility_range = '<200 m';
-                visibility_display = 0.15;
-                pm25_category = 'Hazardous';
-                severity = 'Hazardous';
+                visibility_range = '200-500m';
+                visibility_km = 0.35;
+                fog_alert_type = 'Very Severe Fog';
                 fog_class = 'fog-severe';
-                description = 'Severe fog/haze conditions';
             }
             
             return {
                 visibility_range,
-                visibility_km: visibility_display,
-                category: pm25_category,
-                severity,
-                fogClass: fog_class,
-                description
+                visibility_km,
+                fog_alert_type,
+                fogClass: fog_class
             };
         }
 
@@ -404,7 +381,6 @@
             if (v <= 100) return 'Satisfactory';
             if (v <= 200) return 'Moderate';
             if (v <= 300) return 'Poor';
-            if (v <= 400) return 'Very Poor';
             return 'Severe';
         }
 
@@ -457,18 +433,6 @@
                             const aqiValue = parseInt(aqiElement.getAttribute('Value'));
                             const predominantParam = aqiElement.getAttribute('Predominant_Parameter');
                             
-                            // Get PM2.5 value
-                            let pm25 = 0;
-                            const pm25Element = station.querySelector('Pollutant_Index[id="PM2.5"]');
-                            if (pm25Element) {
-                                pm25 = parseFloat(pm25Element.getAttribute('Avg')) || 0;
-                            }
-                            
-                            // If PM2.5 not available, approximate from AQI
-                            if (pm25 === 0) {
-                                pm25 = aqiValue * 0.7;
-                            }
-                            
                             const visibility = getVisibilityFromAQI(aqiValue);
                             
                             allCitiesData.push({
@@ -476,7 +440,6 @@
                                 city: cityName,
                                 station: stationName,
                                 aqi: aqiValue,
-                                pm25: Math.round(pm25 * 100) / 100,
                                 predominantParam,
                                 visibility,
                                 lastUpdate: station.getAttribute('lastupdate'),
@@ -497,8 +460,8 @@
             const filters = document.getElementById('filters');
             
             const totalStations = allCitiesData.length;
-            const highAQI = allCitiesData.filter(d => d.aqi > 100).length;
-            const poorVis = allCitiesData.filter(d => d.visibility.visibility_km < 5).length;
+            const highAQI = allCitiesData.filter(d => d.aqi > 300).length;
+            const poorVis = allCitiesData.filter(d => d.visibility.visibility_km < 1).length;
             const avgAQI = Math.round(allCitiesData.reduce((sum, d) => sum + d.aqi, 0) / totalStations);
             const avgVis = Math.round((allCitiesData.reduce((sum, d) => sum + d.visibility.visibility_km, 0) / totalStations) * 10) / 10;
             
@@ -508,11 +471,11 @@
                     <div class="num">${totalStations}</div>
                 </div>
                 <div class="stat-box">
-                    <h3>AQI > 100</h3>
+                    <h3>AQI > 300</h3>
                     <div class="num">${highAQI}</div>
                 </div>
                 <div class="stat-box">
-                    <h3>Poor Visibility</h3>
+                    <h3>Visibility < 1 km</h3>
                     <div class="num">${poorVis}</div>
                 </div>
                 <div class="stat-box">
@@ -543,11 +506,11 @@
             
             // Apply visibility filter
             if (visFilter === 'poor') {
-                filtered = filtered.filter(d => d.visibility.visibility_km < 5);
-            } else if (visFilter === 'very-poor') {
                 filtered = filtered.filter(d => d.visibility.visibility_km < 2);
-            } else if (visFilter === 'severe') {
+            } else if (visFilter === 'very-poor') {
                 filtered = filtered.filter(d => d.visibility.visibility_km < 1);
+            } else if (visFilter === 'severe') {
+                filtered = filtered.filter(d => d.visibility.visibility_km < 0.5);
             }
             
             // Apply sorting
@@ -577,7 +540,7 @@
                 const aqiClass = getAQIClass(city.aqi);
                 const aqiLabel = getAQILabel(city.aqi);
                 const vis = city.visibility;
-                const visPercent = Math.min(100, (vis.visibility_km / 15) * 100);
+                const visPercent = Math.min(100, (vis.visibility_km / 3) * 100);
                 
                 html += `
                     <div class="city-card">
@@ -589,15 +552,19 @@
                             <div class="badges">
                                 <span class="badge ${aqiClass}">AQI: ${city.aqi}</span>
                                 <span class="badge">${aqiLabel}</span>
+                                <span class="badge ${vis.fogClass}">${vis.fog_alert_type}</span>
                                 <span class="badge ${vis.fogClass}">VIS: ${vis.visibility_range}</span>
-                                <span class="badge ${vis.fogClass}">${vis.severity}</span>
                             </div>
                         </div>
                         
                         <div class="metrics">
                             <div class="metric">
-                                <div class="metric-label">PM2.5 Level</div>
-                                <div class="metric-value">${city.pm25} μg/m³</div>
+                                <div class="metric-label">AQI Value</div>
+                                <div class="metric-value">${city.aqi}</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">AQI Category</div>
+                                <div class="metric-value">${aqiLabel}</div>
                             </div>
                             <div class="metric">
                                 <div class="metric-label">Visibility Range</div>
@@ -607,25 +574,21 @@
                                 </div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">PM2.5 Category</div>
-                                <div class="metric-value">${vis.category}</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">Severity Level</div>
-                                <div class="metric-value ${vis.fogClass}">${vis.severity}</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">Conditions</div>
-                                <div class="metric-value">${vis.description}</div>
+                                <div class="metric-label">Fog Alert Type</div>
+                                <div class="metric-value ${vis.fogClass}">${vis.fog_alert_type}</div>
                             </div>
                             <div class="metric">
                                 <div class="metric-label">Predominant Pollutant</div>
                                 <div class="metric-value">${city.predominantParam}</div>
                             </div>
+                            <div class="metric">
+                                <div class="metric-label">Last Update</div>
+                                <div class="metric-value" style="font-size: 12px;">${city.lastUpdate}</div>
+                            </div>
                         </div>
                         
                         <div class="city-meta" style="margin-top: 10px;">
-                            Last Update: ${city.lastUpdate} • Coords: ${city.latitude}, ${city.longitude}
+                            Coordinates: ${city.latitude}, ${city.longitude}
                         </div>
                     </div>
                 `;
@@ -640,22 +603,21 @@
                 return;
             }
             
-            const headers = ['State', 'City', 'Station', 'AQI', 'AQI_Category', 'PM2.5_μg/m³', 
-                           'Visibility_Range', 'PM2.5_Category', 'Severity_Level', 'Conditions', 
-                           'Predominant_Parameter', 'Latitude', 'Longitude', 'Last_Update'];
+            // Sort by AQI descending (matching Azure logic)
+            const data_sorted = [...allCitiesData].sort((a, b) => b.aqi - a.aqi);
             
-            const rows = allCitiesData.map(d => [
+            // CSV headers matching Azure format exactly
+            const headers = ['State', 'City', 'Station', 'AQI', 'AQI_Category', 'Visibility_Range', 'Pincode', 'Fog_Alert_Type', 'Latitude', 'Longitude', 'Last_Update'];
+            
+            const rows = data_sorted.map(d => [
                 d.state,
                 d.city,
                 d.station,
                 d.aqi,
                 getAQILabel(d.aqi),
-                d.pm25,
                 d.visibility.visibility_range,
-                d.visibility.category,
-                d.visibility.severity,
-                d.visibility.description,
-                d.predominantParam,
+                'N/A', // Pincode not available in browser (requires backend mapping)
+                d.visibility.fog_alert_type,
                 d.latitude,
                 d.longitude,
                 d.lastUpdate
@@ -670,7 +632,7 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `aqi_fog_analysis_${new Date().toISOString().split('T')[0]}.csv`;
+            a.download = `aqi_report_${new Date().toISOString().split('T')[0]}.csv`;
             a.click();
             window.URL.revokeObjectURL(url);
         }
